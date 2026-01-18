@@ -1,0 +1,79 @@
+import pandas as pd
+import numpy as np
+
+# 1. LOAD DATA
+df = pd.read_csv('Quebec_ER_Master_Dataset.csv')
+
+# Clean formatting
+df = df[df['Nom_etablissement'] != 'Total régional']
+cols = ['Nombre_de_civieres_fonctionnelles', 'Nombre_de_civieres_occupees', 'DMS_ambulatoire']
+for col in cols:
+    df[col] = pd.to_numeric(df[col], errors='coerce')
+
+# Remove rows with bad data
+df = df.dropna(subset=cols)
+df = df[df['Nombre_de_civieres_fonctionnelles'] > 0]
+
+# Calculate Occupancy
+df['Occupancy_Rate'] = (df['Nombre_de_civieres_occupees'] / df['Nombre_de_civieres_fonctionnelles']) * 100
+
+# 2. DEFINING THE REGIMES
+# Regime A: "Safe Zone" (< 80% Occupancy)
+# Regime B: "Crisis Zone" (> 100% Occupancy)
+# We exclude the middle (80-100) to clearly separate the two behaviors.
+
+hospital_stats = []
+
+# Only look at hospitals with at least 100 total data points to be statistically significant
+valid_hospitals = df['Nom_installation'].value_counts()
+valid_hospitals = valid_hospitals[valid_hospitals > 100].index
+
+print(f"Auditioning {len(valid_hospitals)} hospitals for 'Tipping Point' behavior...")
+
+for hospital in valid_hospitals:
+    subset = df[df['Nom_installation'] == hospital]
+    
+    # 3. GET THE MEDIANS (Not Averages!)
+    safe_zone = subset[subset['Occupancy_Rate'] < 80]
+    crisis_zone = subset[subset['Occupancy_Rate'] > 100]
+    
+    # FILTER 1: Data Sufficiency
+    # We need at least 10 hours of data in BOTH zones to judge them.
+    if len(safe_zone) > 10 and len(crisis_zone) > 10:
+        
+        median_safe = safe_zone['DMS_ambulatoire'].median()
+        median_crisis = crisis_zone['DMS_ambulatoire'].median()
+        
+        # Avoid dividing by zero
+        if median_safe > 0:
+            tipping_index = median_crisis / median_safe
+            
+            # FILTER 2: Context
+            # We also want to know the absolute wait time. 
+            # A ratio of 5 is bad, but if it goes from 10 mins to 50 mins, it's not a "crisis".
+            # We want big ratios AND big absolute numbers.
+            
+            hospital_stats.append({
+                'Hospital': hospital,
+                'Region': subset['Region'].iloc[0],
+                'Tipping_Index': tipping_index, # THE KEY METRIC
+                'Median_Wait_Safe': median_safe,
+                'Median_Wait_Crisis': median_crisis,
+                'Max_Wait': subset['DMS_ambulatoire'].max(),
+                'Crisis_Hours_Count': len(crisis_zone)
+            })
+
+# 4. RANKING
+results = pd.DataFrame(hospital_stats)
+
+# We want high Tipping Index.
+results = results.sort_values('Tipping_Index', ascending=False)
+
+print("\n--- TOP 5 'SYSTEM COLLAPSE' CANDIDATES ---")
+print(results[['Hospital', 'Region', 'Tipping_Index', 'Median_Wait_Safe', 'Median_Wait_Crisis']].head(10))
+
+# OPTIONAL: Filter for Montreal/Montérégie specifically if you want a local focus
+print("\n--- TOP LOCAL CANDIDATES (Montreal/Montérégie/Laval) ---")
+local_regions = ['Montréal', 'Montérégie', 'Laval']
+local_results = results[results['Region'].isin(local_regions)]
+print(local_results[['Hospital', 'Region', 'Tipping_Index', 'Median_Wait_Safe', 'Median_Wait_Crisis']].head(5))
