@@ -2,16 +2,14 @@ import pandas as pd
 import os
 
 # --- CONFIGURATION ---
-# Replace this with the exact path to your main folder
-# If the folder is in the same place as your script, just use 'Quebec ER Data'
 root_folder_path = 'Quebec ER Data' 
 
 all_dataframes = []
+skipped_files = [] # To track files that failed to load
 
 print(f"Scanning '{root_folder_path}' for data...")
 
 # 1. TRAVERSE FOLDERS
-# os.walk automatically looks inside 'Quebec ER Data' and every '2025-12-XX' folder inside it
 for root, dirs, files in os.walk(root_folder_path):
     for filename in files:
         if filename.endswith(".csv"):
@@ -19,46 +17,93 @@ for root, dirs, files in os.walk(root_folder_path):
             
             try:
                 # 2. READ THE FILE
-                # We use encoding='latin1' or 'utf-8' depending on the file. 
-                # If you get "UnicodeDecodeError", change this to encoding='latin1'
                 current_df = pd.read_csv(file_path, encoding='utf-8')
                 
                 # 3. STANDARDIZE TIMESTAMP
-                # We rely on 'Mise_a_jour' because it contains the full date and time (ISO format)
-                # The file name also has info, but the column is safer.
                 if 'Mise_a_jour' in current_df.columns:
                     current_df['Timestamp'] = pd.to_datetime(current_df['Mise_a_jour'])
                 else:
-                    # Fallback: Create a timestamp from the folder name + file name if needed
-                    # But your data likely has the column based on the sample you sent.
-                    print(f"Warning: 'Mise_a_jour' missing in {filename}")
+                    # If the timestamp column is missing, we can't use this file reliably
+                    print(f"[WARNING] Skipping {filename}: 'Mise_a_jour' column missing.")
+                    skipped_files.append((filename, "Missing Timestamp Column"))
+                    continue
                 
-                # Add a column for the Source File just in case you need to debug later
+                # Add source file for debugging
                 current_df['Source_File'] = filename
                 
                 all_dataframes.append(current_df)
                 
             except Exception as e:
-                print(f"Skipped {filename} due to error: {e}")
+                # Log the file that failed and the error message
+                print(f"[ERROR] Failed to read {filename}: {e}")
+                skipped_files.append((filename, str(e)))
 
 # 4. MERGE EVERYTHING
 if all_dataframes:
-    print(f"Merging {len(all_dataframes)} files...")
+    print(f"\nMerging {len(all_dataframes)} successfully read files...")
     master_df = pd.concat(all_dataframes, ignore_index=True)
     
-    # 5. CLEANUP
-    # Sort by hospital and then by time to make the data linear
+    # 5. CLEANUP & SAVE
     master_df.sort_values(by=['Nom_installation', 'Timestamp'], inplace=True)
-    
-    # Save to one big CSV
     output_filename = 'Quebec_ER_Master_Dataset.csv'
     master_df.to_csv(output_filename, index=False)
     
-    print("------------------------------------------------")
-    print(f"SUCCESS! Data saved to '{output_filename}'")
-    print(f"Total rows collected: {len(master_df)}")
-    print(f"Time range: {master_df['Timestamp'].min()} to {master_df['Timestamp'].max()}")
-    print("------------------------------------------------")
+    # --- STATISTICS REPORT ---
+    print("\n" + "="*40)
+    print("      DATA COLLECTION REPORT")
+    print("="*40)
+    
+    # A. TOTAL HOURS COLLECTED (Total unique timestamps)
+    # This counts how many distinct hours (e.g., "Jan 9 13:00") exist in the data
+    total_hours_captured = master_df['Timestamp'].nunique()
+    print(f"Total Unique Hourly Snapshots: {total_hours_captured}")
+    
+    # B. TIME SPAN
+    min_time = master_df['Timestamp'].min()
+    max_time = master_df['Timestamp'].max()
+    print(f"Data Starts: {min_time}")
+    print(f"Data Ends:   {max_time}")
+    duration = max_time - min_time
+    print(f"Total Span:  {duration}")
+
+    # C. SKIPPED FILES (WHAT DIDN'T COUNT)
+    print("-" * 40)
+    print(f"Files Skipped/Failed: {len(skipped_files)}")
+    if skipped_files:
+        print("List of Failed Files:")
+        for name, reason in skipped_files:
+            print(f"  - {name} (Reason: {reason})")
+    else:
+        print("(No files failed to load)")
+        
+    # D. HOURLY COVERAGE (MISSING HOURS ANALYSIS)
+    print("-" * 40)
+    print("HOURLY COVERAGE ANALYSIS (Are we missing specific times?)")
+    
+    master_df['Temp_Hour'] = master_df['Timestamp'].dt.hour
+    master_df['Temp_Date'] = master_df['Timestamp'].dt.date
+    
+    total_unique_days = master_df['Temp_Date'].nunique()
+    print(f"Total unique days found: {total_unique_days}")
+    
+    # Count how many days have data for each hour (0-23)
+    hourly_counts = master_df.groupby('Temp_Hour')['Temp_Date'].nunique()
+    
+    # Identify hours that appear less often than the total number of days
+    missing_hours = hourly_counts[hourly_counts < total_unique_days]
+    
+    if not missing_hours.empty:
+        print(f"\n[WARNING] The following hours are missing from some days:")
+        for hour, count in missing_hours.items():
+            missing_count = total_unique_days - count
+            # --- THE FIX IS BELOW: int(hour) ---
+            print(f"  - {int(hour):02d}:00 is present on {count} days (Missing on {missing_count} days)")
+    else:
+        print("\n[PERFECT] Every hour (00:00 to 23:00) is present for every day collected!")
+
+    # Cleanup temp columns
+    master_df.drop(columns=['Temp_Hour', 'Temp_Date'], inplace=True)
+    print("="*40)
 
 else:
     print("No CSV files were found. Check your folder path.")
