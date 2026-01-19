@@ -2,6 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+
 # 1. LOAD
 df = pd.read_csv('Quebec_ER_Master_Dataset.csv')
 
