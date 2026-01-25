@@ -2,7 +2,7 @@ import pandas as pd
 import os
 
 # --- CONFIGURATION ---
-root_folder_path = 'Quebec ER Data' 
+root_folder_path = 'raw_data' 
 
 all_dataframes = []
 skipped_files = [] # To track files that failed to load
@@ -45,7 +45,7 @@ if all_dataframes:
     
     # 5. CLEANUP & SAVE
     master_df.sort_values(by=['Nom_installation', 'Timestamp'], inplace=True)
-    output_filename = 'Quebec_ER_Master_Dataset.csv'
+    output_filename = 'Complete_Quebec_ER_Master_Dataset.csv'
     master_df.to_csv(output_filename, index=False)
     
     # --- STATISTICS REPORT ---

@@ -4,6 +4,7 @@ import seaborn as sns
 
 
 # 1. LOAD
+#df = pd.read_csv('Quebec_ER_Master_Dataset.csv')
 df = pd.read_csv('Quebec_ER_Master_Dataset.csv')
 
 # 2. CLEANING
