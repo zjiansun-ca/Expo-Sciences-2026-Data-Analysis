@@ -2,57 +2,46 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-def extract_arrival_schedule(file_path, hospital_name="ROYAL VICTORIA"):
-    print(f"--- EXTRACTING REAL ARRIVAL SCHEDULE FOR {hospital_name} ---")
+def extract_arrival_schedule_improved(file_path, hospital_name="ROYAL VICTORIA"):
     df = pd.read_csv(file_path)
     
-    # Filter and Sort
+    # 1. Filter and Clean
     vic = df[df['Nom_installation'].str.contains(hospital_name, case=False, na=False)].copy()
-    
-    # --- THE FIX IS HERE ---
-    # format='mixed' handles variations in the timestamp strings
-    # errors='coerce' turns completely broken strings into NaT (Not a Time)
     vic['Timestamp'] = pd.to_datetime(vic['Mise_a_jour'], format='mixed', errors='coerce')
-    
-    # Drop any rows where the timestamp was completely unreadable
-    vic = vic.dropna(subset=['Timestamp']) 
-    vic = vic.sort_values('Timestamp')
-    # -----------------------
-    
-    # Remove duplicates if any (same hour reported twice)
+    vic = vic.dropna(subset=['Timestamp']).sort_values('Timestamp')
     vic = vic.drop_duplicates(subset=['Timestamp'], keep='last')
     
-    # Calculate Arrivals logic
-    vic['Occupied'] = pd.to_numeric(vic['Nombre_de_civieres_occupees'], errors='coerce').fillna(0)
-    vic['Prev_Occupied'] = vic['Occupied'].shift(1).fillna(vic['Occupied'])
+    # 2. Convert to Numeric
+    metrics = ['Nombre_total_de_patients_presents_a_lurgence', 'Nombre_de_civieres_occupees', 
+               'DMS_sur_civiere', 'DMS_ambulatoire']
+    for m in metrics:
+        vic[m] = pd.to_numeric(vic[m], errors='coerce').fillna(0)
     
-    # Estimate Discharges (Little's Law estimation per step)
-    vic['Est_Discharges'] = vic['Occupied'] / 30.0 
+    # 3. Separate Populations
+    vic['N_stretcher'] = vic['Nombre_de_civieres_occupees']
+    vic['N_ambulatory'] = (vic['Nombre_total_de_patients_presents_a_lurgence'] - vic['N_stretcher']).clip(lower=0)
     
-    # Calculate Raw Arrivals
-    vic['Arrivals_Raw'] = (vic['Occupied'] - vic['Prev_Occupied']) + vic['Est_Discharges']
+    # 4. Calculate Discharges using dynamic DMS (Length of Stay)
+    # If DMS is 0, we use a conservative fallback (24h for stretcher, 4h for walking)
+    vic['Rate_Stretcher'] = 1 / vic['DMS_sur_civiere'].replace(0, 24)
+    vic['Rate_Ambulatory'] = 1 / vic['DMS_ambulatoire'].replace(0, 4)
     
-    # Clean up negatives and noise (smoothing)
-    vic['Arrivals_Clean'] = vic['Arrivals_Raw'].apply(lambda x: max(0, int(round(x))))
+    vic['Est_Discharges'] = (vic['N_stretcher'].shift(1) * vic['Rate_Stretcher'].shift(1)) + \
+                            (vic['N_ambulatory'].shift(1) * vic['Rate_Ambulatory'].shift(1))
     
-    # Save to a simple list/dictionary for the engine
-    arrival_schedule = vic['Arrivals_Clean'].tolist()
+    # 5. The Arrival Formula: (Net Change in Census) + (Outflow)
+    vic['Census_Delta'] = vic['Nombre_total_de_patients_presents_a_lurgence'].diff()
+    vic['Arrivals_Raw'] = vic['Census_Delta'] + vic['Est_Discharges']
     
-    print(f"Extracted {len(arrival_schedule)} hours of data.")
-    print(f"Total Estimated Arrivals: {sum(arrival_schedule)}")
-    print(f"Average Arrivals/Hour: {np.mean(arrival_schedule):.2f}")
+    # Clean noise (round to nearest whole patient, no negatives)
+    vic['Arrivals_Final'] = vic['Arrivals_Raw'].fillna(0).apply(lambda x: int(round(max(0, x))))
     
-    # Plot to verify it looks like a daily cycle
-    plt.figure(figsize=(12, 4))
-    plt.plot(arrival_schedule[:168]) # First week
-    plt.title("Estimated Hourly Arrivals (First 7 Days)")
-    plt.xlabel("Hour")
-    plt.ylabel("New Patients")
-    plt.savefig("arrival_pattern_check.png")
-    print("Saved 'arrival_pattern_check.png'")
+    # Export and Stats
+    print(f"Average Arrivals/Hour: {vic['Arrivals_Final'].mean():.2f}")
+    print(f"Estimated Peak Hourly Arrival: {vic['Arrivals_Final'].max()}")
     
-    return arrival_schedule
+    return vic['Arrivals_Final'].tolist()
 
 if __name__ == "__main__":
-    schedule = extract_arrival_schedule('Quebec_ER_Master_Dataset.csv')
-    print(f"\nCOPY THIS LIST START: {schedule[:40]} ...")
+    schedule = extract_arrival_schedule_improved('Quebec_ER_Master_Dataset.csv')
+    print(f"First 24 hours of arrivals: {schedule[:40]}")

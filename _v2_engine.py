@@ -1,7 +1,7 @@
 import random
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns  # Added for the beautiful density curve
+import seaborn as sns
 from dataclasses import dataclass
 
 # ==========================
@@ -14,6 +14,9 @@ CONFIG = {
     'TRIAGE_ERROR_RATE': 0.10, 
     'SHORT_THRESHOLD': 14.0,   
     'LONG_THRESHOLD': 32.0,    
+    # New policy thresholds
+    'ESCALATION_L2_THRESHOLD': 8,   # L2 escalates after 8h wait
+    'ESCALATION_L3_THRESHOLD': 15,  # L3 escalates after 15h wait
 }
 
 @dataclass
@@ -40,25 +43,25 @@ class EREngineV3:
         self.history_queue_length = [] 
         
     def spawn_patients(self, count, offset_time=None):
-            for _ in range(int(count)):
-                p_id = len(self.queue) + len(self.beds) + len(self.completed)
+        for _ in range(int(count)):
+            p_id = len(self.queue) + len(self.beds) + len(self.completed)
+            
+            true_duration = random.lognormvariate(mu=np.log(10), sigma=0.6)
+            
+            if true_duration > CONFIG['LONG_THRESHOLD']: base_severity = 1
+            elif true_duration < CONFIG['SHORT_THRESHOLD']: base_severity = 3
+            else: base_severity = 2
                 
-                true_duration = random.lognormvariate(mu=np.log(10), sigma=0.6)
+            if random.random() < CONFIG['TRIAGE_ERROR_RATE']:
+                base_severity = random.choice([1, 2, 3])
                 
-                if true_duration > CONFIG['LONG_THRESHOLD']: base_severity = 1
-                elif true_duration < CONFIG['SHORT_THRESHOLD']: base_severity = 3
-                else: base_severity = 2
-                    
-                if random.random() < CONFIG['TRIAGE_ERROR_RATE']:
-                    base_severity = random.choice([1, 2, 3])
-                    
-                arr_time = self.env_time if offset_time is None else offset_time
-                p = Patient(p_id, arr_time, true_duration, base_severity)
+            arr_time = self.env_time if offset_time is None else offset_time
+            p = Patient(p_id, arr_time, true_duration, base_severity)
+            
+            if offset_time is not None:
+                p.wait_time = abs(offset_time)
                 
-                if offset_time is not None:
-                    p.wait_time = abs(offset_time)
-                    
-                self.queue.append(p)
+            self.queue.append(p)
 
     def sort_queue(self):
         if self.policy_mode == "FCFS":
@@ -76,12 +79,31 @@ class EREngineV3:
         elif self.policy_mode == "FAST_TRACK":
             def fast_track_priority(p):
                 if p.perceived_severity == 1: return 1
-                # ANTI-STARVATION FIX: 1.5 priority rescues Standard patients stuck > 24h
                 elif p.perceived_severity == 2 and p.wait_time > 24: return 1.5 
                 elif p.perceived_severity == 3: return 2
                 else: return 3 
                 
             self.queue.sort(key=lambda p: (fast_track_priority(p), -p.wait_time))
+
+        elif self.policy_mode == "ADAPTIVE_ESCALATION":
+            def adaptive_priority(p):
+                # L1: always top priority, no escalation needed
+                if p.perceived_severity == 1:
+                    return (0, -p.wait_time)
+                # L2: escalates to near-L1 priority after 8h
+                elif p.perceived_severity == 2:
+                    if p.wait_time >= CONFIG['ESCALATION_L2_THRESHOLD']:
+                        return (1, -p.wait_time)   # escalated L2
+                    else:
+                        return (2, -p.wait_time)   # standard L2
+                # L3: escalates after 15h, but still behind escalated L2
+                elif p.perceived_severity == 3:
+                    if p.wait_time >= CONFIG['ESCALATION_L3_THRESHOLD']:
+                        return (1.5, -p.wait_time) # escalated L3 (between L2 tiers)
+                    else:
+                        return (3, -p.wait_time)   # standard L3
+
+            self.queue.sort(key=adaptive_priority)
 
     def step(self):
         if self.env_time < len(self.schedule):
@@ -126,8 +148,8 @@ class EREngineV3:
 # 3. RUNNER & 6-GRAPH ANALYTICS
 # ==========================
 def run_v3_experiment(arrival_data):
-    policies = ["FCFS", "BASELINE", "GUILLOTINE", "FAST_TRACK"]
-    colors = ['#95a5a6', '#e74c3c', '#f39c12', '#2ecc71'] # Gray, Red, Orange, Green
+    policies = ["FCFS", "BASELINE", "GUILLOTINE", "FAST_TRACK", "ADAPTIVE_ESCALATION"]
+    colors = ['#95a5a6', '#e74c3c', '#f39c12', '#2ecc71', '#3498db'] # +Blue for new policy
     
     results_map = {}
     queue_history = {}
@@ -175,12 +197,10 @@ def run_v3_experiment(arrival_data):
         print(f"  Overall -> Median: {median:.1f}h | Avg: {avg:.1f}h | Max: {max_w:.1f}h | >24h: {bad_w}")
         print(f"  Critical-> Avg Wait for Severe Patients (Level 1): {crit_avg:.1f}h")
 
-    # ---------------------------------------------------------
     # GRAPH GENERATION (6 GRAPHS)
-    # ---------------------------------------------------------
     
     # Graph 1: The Boxplot
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(11, 6))
     bplot = plt.boxplot([results_map[p] for p in policies], tick_labels=policies, showfliers=False, patch_artist=True)
     for patch, color in zip(bplot['boxes'], colors):
         patch.set_facecolor(color)
@@ -188,10 +208,11 @@ def run_v3_experiment(arrival_data):
     plt.title("Graph 1: Spread of Wait Times (Middle 75%)")
     plt.ylabel("Wait Time (Hours)")
     plt.grid(True, alpha=0.3)
+    plt.tight_layout()
     plt.savefig("Graph1_Boxplot.png")
     
     # Graph 2: Waiting Room Size Over Time
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(11, 6))
     for i, pol in enumerate(policies):
         plt.plot(queue_history[pol], label=pol, linewidth=2, color=colors[i])
     plt.title("Graph 2: Waiting Room Congestion Over Time")
@@ -199,11 +220,12 @@ def run_v3_experiment(arrival_data):
     plt.ylabel("Patients in Waiting Room")
     plt.legend()
     plt.grid(True, alpha=0.3)
+    plt.tight_layout()
     plt.savefig("Graph2_Queue_Size.png")
     
     # Graph 3: Wait Time by Severity Level
-    plt.figure(figsize=(10, 6))
-    bar_width = 0.25
+    plt.figure(figsize=(12, 6))
+    bar_width = 0.2
     index = np.arange(len(policies))
     
     avg_sev1 = [np.mean(severity_waits[p][1]) for p in policies]
@@ -217,13 +239,14 @@ def run_v3_experiment(arrival_data):
     plt.xlabel('Triage Policy')
     plt.ylabel('Average Wait Time (Hours)')
     plt.title('Graph 3: Ethical Trade-offs (Who Waits Longer?)')
-    plt.xticks(index + bar_width, policies)
+    plt.xticks(index + bar_width, policies, rotation=10)
     plt.legend()
     plt.grid(axis='y', alpha=0.3)
+    plt.tight_layout()
     plt.savefig("Graph3_Severity_Tradeoff.png")
 
-    # Graph 4: Cumulative Distribution Function (CDF)
-    plt.figure(figsize=(10, 6))
+    # Graph 4: CDF
+    plt.figure(figsize=(11, 6))
     for i, pol in enumerate(policies):
         sorted_waits = np.sort(results_map[pol])
         yvals = np.arange(1, len(sorted_waits)+1) / len(sorted_waits) * 100
@@ -236,10 +259,11 @@ def run_v3_experiment(arrival_data):
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.xlim(0, 50) 
+    plt.tight_layout()
     plt.savefig("Graph4_Cumulative_Success.png")
 
-    # Graph 5: The >24h Crisis Bar Chart
-    plt.figure(figsize=(8, 6))
+    # Graph 5: >24h Crisis Bar Chart
+    plt.figure(figsize=(9, 6))
     bad_counts = [sum(1 for w in results_map[p] if w > 24) for p in policies]
     bars = plt.bar(policies, bad_counts, color=colors, alpha=0.9)
     plt.title("Graph 5: The 24-Hour Crisis (Total Patients Stranded)")
@@ -248,11 +272,11 @@ def run_v3_experiment(arrival_data):
         yval = bar.get_height()
         plt.text(bar.get_x() + bar.get_width()/2, yval + 1, int(yval), ha='center', va='bottom', fontweight='bold')
     plt.grid(axis='y', alpha=0.3)
+    plt.tight_layout()
     plt.savefig("Graph5_Crisis_Count.png")
 
-    # Graph 6: Wait Time Density (KDE Curve)
-    
-    plt.figure(figsize=(10, 6))
+    # Graph 6: KDE Density
+    plt.figure(figsize=(11, 6))
     for i, pol in enumerate(policies):
         sns.kdeplot(results_map[pol], label=pol, color=colors[i], linewidth=2.5, fill=True, alpha=0.1)
     plt.title("Graph 6: Density Distribution of Wait Times")
@@ -261,6 +285,7 @@ def run_v3_experiment(arrival_data):
     plt.xlim(0, 50)
     plt.legend()
     plt.grid(True, alpha=0.3)
+    plt.tight_layout()
     plt.savefig("Graph6_Density_Curve.png")
 
     print("\n" + "="*50)
