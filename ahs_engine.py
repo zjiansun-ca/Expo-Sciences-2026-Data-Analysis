@@ -8,12 +8,12 @@ from dataclasses import dataclass
 # 1. SCIENTIFIC CONFIGURATION
 # ==========================
 CONFIG = {
-    'NOMINAL_CAPACITY': 33,    
-    'MAX_OVERCROWD': 1.2,      
-    'CONGESTION_PENALTY': 0.2, 
-    'TRIAGE_ERROR_RATE': 0.10, 
-    'SHORT_THRESHOLD': 14.0,   
-    'LONG_THRESHOLD': 32.0,    
+    'NOMINAL_CAPACITY': 75,      # UofA is significantly larger than Victoria
+    'MAX_OVERCROWD': 1.3,       # High tolerance for surge
+    'CONGESTION_PENALTY': 0.25,  # Efficiency drops more in large centers
+    'TRIAGE_ERROR_RATE': 0.08, 
+    'SHORT_THRESHOLD': 12.0,   
+    'LONG_THRESHOLD': 36.0,     
     # New policy thresholds
     'ESCALATION_L2_THRESHOLD': 8,   # L2 escalates after 8h wait
     'ESCALATION_L3_THRESHOLD': 15,  # L3 escalates after 15h wait
@@ -46,21 +46,19 @@ class EREngineV3:
         for _ in range(int(count)):
             p_id = len(self.queue) + len(self.beds) + len(self.completed)
             
-            true_duration = random.lognormvariate(mu=np.log(10), sigma=0.6)
+            # Service Duration Distribution (Adjusted for UofA Complexity)
+            # High-acuity trauma centers have longer tails in service time
+            true_duration = random.lognormvariate(mu=np.log(12), sigma=0.7)
             
-            if true_duration > CONFIG['LONG_THRESHOLD']: base_severity = 1
-            elif true_duration < CONFIG['SHORT_THRESHOLD']: base_severity = 3
-            else: base_severity = 2
-                
-            if random.random() < CONFIG['TRIAGE_ERROR_RATE']:
-                base_severity = random.choice([1, 2, 3])
+            # Probability Distribution for UofA (High Acuity)
+            # 15% Level 1 (Severe), 45% Level 2 (Standard), 40% Level 3 (Minor)
+            rand_val = random.random()
+            if rand_val < 0.15: base_severity = 1
+            elif rand_val < 0.60: base_severity = 2
+            else: base_severity = 3
                 
             arr_time = self.env_time if offset_time is None else offset_time
             p = Patient(p_id, arr_time, true_duration, base_severity)
-            
-            if offset_time is not None:
-                p.wait_time = abs(offset_time)
-                
             self.queue.append(p)
 
     def sort_queue(self):
@@ -198,7 +196,7 @@ def run_v3_experiment(arrival_data):
     plt.ylabel("Wait Time (Hours)")
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig("Graph1_Boxplot.png")
+    plt.savefig("AHS_Graph1_Boxplot.png")
     
     # Graph 2: Waiting Room Size Over Time
     plt.figure(figsize=(11, 6))
@@ -210,7 +208,7 @@ def run_v3_experiment(arrival_data):
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig("Graph2_Queue_Size.png")
+    plt.savefig("AHS_Graph2_Queue_Size.png")
     
     # Graph 3: Wait Time by Severity Level
     plt.figure(figsize=(12, 6))
@@ -232,7 +230,7 @@ def run_v3_experiment(arrival_data):
     plt.legend()
     plt.grid(axis='y', alpha=0.3)
     plt.tight_layout()
-    plt.savefig("Graph3_Severity_Tradeoff.png")
+    plt.savefig("AHS_Graph3_Severity_Tradeoff.png")
 
     # Graph 4: CDF
     plt.figure(figsize=(11, 6))
@@ -249,7 +247,7 @@ def run_v3_experiment(arrival_data):
     plt.grid(True, alpha=0.3)
     plt.xlim(0, 50) 
     plt.tight_layout()
-    plt.savefig("Graph4_Cumulative_Success.png")
+    plt.savefig("AHS_Graph4_Cumulative_Success.png")
 
     # Graph 5: >24h Crisis Bar Chart
     plt.figure(figsize=(9, 6))
@@ -262,7 +260,7 @@ def run_v3_experiment(arrival_data):
         plt.text(bar.get_x() + bar.get_width()/2, yval + 1, int(yval), ha='center', va='bottom', fontweight='bold')
     plt.grid(axis='y', alpha=0.3)
     plt.tight_layout()
-    plt.savefig("Graph5_Crisis_Count.png")
+    plt.savefig("AHS_Graph5_Crisis_Count.png")
 
     # Graph 6: KDE Density
     plt.figure(figsize=(11, 6))
@@ -275,12 +273,12 @@ def run_v3_experiment(arrival_data):
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig("Graph6_Density_Curve.png")
+    plt.savefig("AHS_Graph6_Density_Curve.png")
 
     print("\n" + "="*50)
     print("SUCCESS: 6 High-Quality Graphs Generated!")
     print("Check your folder for Graph1 through Graph6.")
 
 # USAGE
-real_arrivals_list = [2, 2, 2, 3, 5, 0, 5, 0, 1, 4, 3, 3, 1, 0, 0, 4, 0, 0, 1, 3, 4, 2, 7, 0, 4, 6, 3, 5, 2, 2, 2, 3, 0, 0, 2, 3, 5, 2, 6, 3]
+real_arrivals_list = [8, 8, 9, 11, 9, 7, 8, 9, 12, 14, 17, 13, 12, 11, 10, 12, 11, 6, 6, 10, 5, 7, 10, 11, 9, 9, 12, 13, 16, 14, 13, 17, 18, 21, 18, 16, 19, 20, 22, 20]
 run_v3_experiment(real_arrivals_list)
