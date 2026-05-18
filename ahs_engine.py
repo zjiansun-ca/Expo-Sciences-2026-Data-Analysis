@@ -53,8 +53,8 @@ class EREngineV3:
             # Probability Distribution for UofA (High Acuity)
             # 15% Level 1 (Severe), 45% Level 2 (Standard), 40% Level 3 (Minor)
             rand_val = random.random()
-            if rand_val < 0.15: base_severity = 1
-            elif rand_val < 0.60: base_severity = 2
+            if rand_val < 0.05: base_severity = 1
+            elif rand_val < 0.80: base_severity = 2
             else: base_severity = 3
                 
             arr_time = self.env_time if offset_time is None else offset_time
@@ -70,14 +70,14 @@ class EREngineV3:
             
         elif self.policy_mode == "GUILLOTINE":
             self.queue.sort(key=lambda p: (
-                0 if p.wait_time > 24 else p.perceived_severity, 
+                0 if p.wait_time > 10 else p.perceived_severity, 
                 -p.wait_time
             ))
             
         elif self.policy_mode == "FAST_TRACK":
             def fast_track_priority(p):
                 if p.perceived_severity == 1: return 1
-                elif p.perceived_severity == 2 and p.wait_time > 24: return 1.5 
+                elif p.perceived_severity == 2 and p.wait_time > 10: return 1.5 
                 elif p.perceived_severity == 3: return 2
                 else: return 3 
                 
@@ -136,7 +136,7 @@ class EREngineV3:
 # ==========================
 def run_v3_experiment(arrival_data):
     policies = ["FCFS", "BASELINE", "GUILLOTINE", "FAST_TRACK", "WEIGHTED_FCFS"]
-    colors = ['#95a5a6', '#e74c3c', '#f39c12', '#2ecc71', '#9b59b6']  # +Purple
+    colors = ['#95a5a6', '#4f83d1', '#f39c12', '#2ecc71', '#9b59b6']  # +Purple
     
     results_map = {}
     queue_history = {}

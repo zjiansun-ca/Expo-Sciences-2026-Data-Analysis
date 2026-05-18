@@ -1,0 +1,1226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ERgo Simulation Dashboard v2</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f0f4f8;
+    --surface: #ffffff;
+    --surface2: #e8eef4;
+    --border: #c8d8e8;
+    --accent: #0077aa;
+    --accent2: #cc4400;
+    --accent3: #1a8a00;
+    --warn: #b07800;
+    --danger: #cc1111;
+    --text: #2a3f52;
+    --text-dim: #7a9ab2;
+    --text-bright: #0d1f2d;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+
+    /* severity colors */
+    --ctas1: #cc1111;
+    --ctas2: #b07800;
+    --ctas3: #1a8a00;
+
+    /* policy badge colors */
+    --col-fcfs: #4a9eff;
+    --col-baseline: #ff6b35;
+    --col-guillotine: #ffb700;
+    --col-fasttrack: #39ff14;
+    --col-wfcfs: #c084fc;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,80,140,0.012) 2px, rgba(0,80,140,0.012) 4px);
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  /* ── Header ─────────────────────────────────────────── */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(255,255,255,0.92);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    backdrop-filter: blur(10px);
+  }
+  .logo { display: flex; align-items: baseline; gap: 10px; }
+  .logo-main { font-family: var(--mono); font-size: 24px; font-weight: 700; color: var(--accent); letter-spacing: 4px; text-shadow: 0 0 12px rgba(0,119,170,0.2); }
+  .logo-sub { font-family: var(--mono); font-size: 10px; color: var(--text-dim); letter-spacing: 2px; text-transform: uppercase; }
+  .header-right { display: flex; align-items: center; gap: 20px; }
+  .sim-badge { font-family: var(--mono); font-size: 10px; color: var(--accent3); letter-spacing: 2px; display: flex; align-items: center; gap: 6px; }
+  .dot-pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--accent3); animation: pulse 1.5s ease-in-out infinite; box-shadow: 0 0 8px var(--accent3); }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.7)} }
+
+  /* ── Hospital selector ───────────────────────────────── */
+  .hospital-selector {
+    padding: 16px 32px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+  .selector-label { font-family: var(--mono); font-size: 10px; letter-spacing: 2px; color: var(--text-dim); text-transform: uppercase; }
+  .hospital-tabs { display: flex; gap: 0; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+  .hospital-tab { padding: 8px 20px; font-family: var(--mono); font-size: 11px; letter-spacing: 1px; cursor: pointer; background: transparent; color: var(--text-dim); border: none; transition: all .2s; }
+  .hospital-tab:not(:last-child) { border-right: 1px solid var(--border); }
+  .hospital-tab.active { background: rgba(0,119,170,.1); color: var(--accent); }
+  .hospital-tab:hover:not(.active) { background: rgba(0,100,180,.05); color: var(--text); }
+  .hospital-info { font-family: var(--mono); font-size: 10px; color: var(--text-dim); margin-left: auto; }
+  .hospital-info span { color: var(--accent); }
+
+  /* ── Main layout ─────────────────────────────────────── */
+  .main { padding: 24px 32px; display: flex; flex-direction: column; gap: 20px; }
+
+  .section-label {
+    font-family: var(--mono); font-size: 9px; letter-spacing: 3px; color: var(--text-dim);
+    text-transform: uppercase; margin-bottom: 12px; display: flex; align-items: center; gap: 10px;
+  }
+  .section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  /* ── Stat cards ──────────────────────────────────────── */
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); padding: 18px 20px; position: relative; overflow: hidden; }
+  .stat-card::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background:var(--accent); opacity:.6; }
+  .stat-card.warn::before { background: var(--warn); }
+  .stat-card.danger::before { background: var(--danger); }
+  .stat-card.ok::before { background: var(--accent3); }
+  .stat-label { font-family:var(--mono); font-size:9px; letter-spacing:2px; color:var(--text-dim); text-transform:uppercase; margin-bottom:10px; }
+  .stat-value { font-family:var(--mono); font-size:28px; font-weight:700; color:var(--text-bright); line-height:1; margin-bottom:6px; }
+  .stat-value.redacted { background:rgba(0,100,180,.08); color:transparent; border-radius:2px; letter-spacing:2px; animation:blink-bg 1.5s infinite; }
+  @keyframes blink-bg { 0%,100%{background:rgba(0,100,180,.06)} 50%{background:rgba(0,100,180,.14)} }
+  .stat-unit { font-family:var(--mono); font-size:9px; color:var(--text-dim); letter-spacing:1px; }
+  .stat-delta { position:absolute; top:18px; right:16px; font-family:var(--mono); font-size:9px; letter-spacing:1px; }
+
+  /* ── Policy cards ────────────────────────────────────── */
+  .policy-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+  .policy-card { background:var(--surface); border:1px solid var(--border); padding:16px; cursor:pointer; transition:all .2s; position:relative; }
+  .policy-card:hover { border-color: rgba(0,119,170,.4); }
+  .policy-card.selected { border-color:var(--accent); background:rgba(0,119,170,.06); }
+  .policy-card.selected::after { content:'SELECTED'; position:absolute; top:8px; right:8px; font-family:var(--mono); font-size:7px; letter-spacing:1px; color:var(--accent); border:1px solid var(--accent); padding:1px 4px; }
+  .policy-name { font-family:var(--mono); font-size:12px; font-weight:700; color:var(--text-bright); margin-bottom:4px; letter-spacing:1px; }
+  .policy-desc { font-size:11px; color:var(--text-dim); line-height:1.5; }
+  .policy-dot { display:inline-block; width:8px; height:8px; border-radius:1px; margin-right:6px; vertical-align:middle; }
+
+  /* ── Run controls ────────────────────────────────────── */
+  .run-section { display:flex; align-items:center; gap:20px; }
+  .run-btn { display:flex; align-items:center; gap:10px; padding:14px 28px; background:transparent; border:1px solid var(--accent); color:var(--accent); font-family:var(--mono); font-size:11px; letter-spacing:2px; text-transform:uppercase; cursor:pointer; transition:all .2s; position:relative; overflow:hidden; }
+  .run-btn::before { content:''; position:absolute; inset:0; background:var(--accent); transform:translateX(-100%); transition:transform .3s ease; }
+  .run-btn:hover::before { transform:translateX(0); }
+  .run-btn:hover { color:var(--bg); }
+  .run-btn span { position:relative; z-index:1; }
+  .run-btn:disabled { border-color:var(--border); color:var(--text-dim); cursor:not-allowed; }
+  .run-btn:disabled::before { display:none; }
+  .run-btn-icon { position:relative; z-index:1; font-size:14px; }
+  .run-hint { font-family:var(--mono); font-size:9px; color:var(--text-dim); letter-spacing:1px; }
+  .reset-btn { background:transparent; border:1px solid var(--border); color:var(--text-dim); font-family:var(--mono); font-size:9px; letter-spacing:2px; padding:6px 14px; cursor:pointer; transition:all .2s; text-transform:uppercase; }
+  .reset-btn:hover { border-color:var(--danger); color:var(--danger); }
+
+  /* ── Loading overlay ─────────────────────────────────── */
+  .loading-overlay { display:none; position:fixed; inset:0; background:rgba(240,244,248,.97); z-index:500; flex-direction:column; align-items:center; justify-content:center; gap:32px; }
+  .loading-overlay.visible { display:flex; animation:fadeIn .2s ease; }
+  @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+  .loading-title { font-family:var(--mono); font-size:11px; letter-spacing:4px; color:var(--text-dim); text-transform:uppercase; }
+  .loading-bar-wrap { width:400px; height:2px; background:var(--border); position:relative; overflow:hidden; }
+  .loading-bar-fill { height:100%; background:var(--accent); width:0%; transition:width .1s linear; box-shadow:0 0 6px rgba(0,119,170,.4); }
+  .loading-log { width:400px; font-family:var(--mono); font-size:10px; color:var(--text-dim); letter-spacing:1px; line-height:2; min-height:100px; }
+  .loading-log .log-line { opacity:0; animation:logAppear .2s forwards; }
+  .loading-log .log-line.active { color:var(--accent); }
+  .loading-log .log-line.done { color:var(--text-dim); }
+  @keyframes logAppear { from{opacity:0;transform:translateX(-6px)} to{opacity:1;transform:none} }
+  .loading-percent { font-family:var(--mono); font-size:48px; font-weight:700; color:var(--accent); text-shadow:0 0 20px rgba(0,119,170,.2); line-height:1; }
+
+  /* ── Results panels ──────────────────────────────────── */
+  .results-grid { display:grid; grid-template-columns:1.2fr 1fr; gap:12px; }
+  .panel { background:var(--surface); border:1px solid var(--border); padding:20px; }
+  .panel-title { font-family:var(--mono); font-size:10px; letter-spacing:2px; color:var(--text-dim); text-transform:uppercase; margin-bottom:16px; display:flex; align-items:center; gap:8px; }
+
+  /* ── Bar chart ───────────────────────────────────────── */
+  .bar-chart { display:flex; flex-direction:column; gap:10px; }
+  .bar-row { display:grid; grid-template-columns:100px 1fr 50px; align-items:center; gap:12px; }
+  .bar-label { font-family:var(--mono); font-size:9px; letter-spacing:1px; color:var(--text-dim); text-align:right; text-transform:uppercase; }
+  .bar-track { height:14px; background:var(--surface2); border:1px solid var(--border); position:relative; overflow:hidden; }
+  .bar-fill { height:100%; width:0%; transition:width 1s cubic-bezier(.16,1,.3,1); position:relative; }
+  .bar-fill.fcfs        { background:linear-gradient(90deg,#4a9eff,#6fbfff); }
+  .bar-fill.baseline    { background:linear-gradient(90deg,#ff6b35,#ff9b6b); }
+  .bar-fill.guillotine  { background:linear-gradient(90deg,#ffb700,#ffd060); }
+  .bar-fill.fasttrack   { background:linear-gradient(90deg,#39ff14,#80ff60); }
+  .bar-fill.wfcfs       { background:linear-gradient(90deg,#c084fc,#ddb6ff); }
+  .bar-fill.best::after { content:'★'; position:absolute; right:4px; top:50%; transform:translateY(-50%); font-size:8px; color:rgba(0,0,0,.5); }
+  .bar-val { font-family:var(--mono); font-size:11px; font-weight:700; color:var(--text-bright); text-align:right; }
+  .bar-val.locked { background:rgba(0,100,180,.06); color:transparent; border-radius:2px; animation:blink-bg 2s infinite; width:40px; display:inline-block; }
+
+  /* ── Bed occupancy ───────────────────────────────────── */
+  .bed-grid { display:grid; grid-template-columns:repeat(11,1fr); gap:4px; }
+  
+  .bed-cell { width:100%; aspect-ratio:1; border-radius:2px; background:var(--border); transition:all .3s; }
+  .bed-cell.occupied, .bed-cell.critical { background:var(--accent); box-shadow:0 0 4px rgba(0,119,170,.25); }
+  .bed-cell.locked    { background:rgba(0,100,180,.08); animation:blink-bg 2s infinite; }
+  
+  .sectioned-beds-container { display: flex; flex-direction: column; gap: 12px; }
+  .bed-section-block { border: 1px dashed var(--border); padding: 8px; border-radius: 4px; }
+  .bed-section-header { font-family: var(--mono); font-size: 8px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; display: flex; justify-content: space-between; }
+
+  .severity-row { display:flex; gap:0; height:8px; border-radius:2px; overflow:hidden; margin-top:12px; }
+  .sev-critical { background:var(--danger); transition:width 1s ease; }
+  .sev-standard { background:var(--warn); transition:width 1s ease; }
+  .sev-minor    { background:var(--accent3); transition:width 1s ease; }
+  .severity-legend { display:flex; gap:16px; margin-top:8px; }
+  .sev-item { display:flex; align-items:center; gap:6px; font-family:var(--mono); font-size:9px; color:var(--text-dim); }
+  .sev-dot { width:6px; height:6px; border-radius:1px; }
+
+  /* ── Patient Flow ────────────────────────────────────── */
+  .flow-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  .flow-stat { background:var(--surface2); border:1px solid var(--border); padding:12px; }
+  .flow-label { font-family:var(--mono); font-size:8px; letter-spacing:2px; color:var(--text-dim); text-transform:uppercase; margin-bottom:6px; }
+  .flow-val { font-family:var(--mono); font-size:20px; font-weight:700; color:var(--text-bright); }
+  .flow-val.locked { color:transparent; background:rgba(0,100,180,.06); border-radius:2px; animation:blink-bg 2s infinite; }
+  .flow-sub { font-family:var(--mono); font-size:8px; color:var(--text-dim); margin-top:2px; }
+
+  /* ── Tabs ────────────────────────────────────────────── */
+  .tab-row { display:flex; gap:0; border-bottom:1px solid var(--border); }
+  .tab-btn { padding:10px 20px; background:transparent; border:none; border-bottom:2px solid transparent; font-family:var(--mono); font-size:10px; letter-spacing:1px; color:var(--text-dim); cursor:pointer; transition:all .2s; text-transform:uppercase; margin-bottom:-1px; }
+  .tab-btn.active { color:var(--accent); border-bottom-color:var(--accent); }
+  .tab-content { display:none; }
+  .tab-content.active { display:block; }
+  .wide-panel { background:var(--surface); border:1px solid var(--border); }
+
+  /* ── Data table ──────────────────────────────────────── */
+  .data-table { width:100%; border-collapse:collapse; font-family:var(--mono); font-size:10px; }
+  .data-table th { text-align:left; padding:6px 10px; font-size:8px; letter-spacing:2px; color:var(--text-dim); text-transform:uppercase; border-bottom:1px solid var(--border); font-weight:400; }
+  .data-table td { padding:8px 10px; border-bottom:1px solid rgba(26,46,66,.5); color:var(--text); }
+  .data-table tr:hover td { background:rgba(0,100,180,.04); }
+  .data-table .best-row td { color:var(--text-bright); }
+  .data-table .best-row td:first-child { color:var(--accent3); }
+  .badge { display:inline-block; padding:1px 6px; font-size:7px; letter-spacing:1px; text-transform:uppercase; border-radius:2px; margin-left:4px; }
+  .badge.best { background:rgba(57,255,20,.1); color:var(--accent3); border:1px solid rgba(57,255,20,.3); }
+  .badge.warn { background:rgba(255,183,0,.1); color:var(--warn); border:1px solid rgba(255,183,0,.3); }
+  .locked-cell { background:rgba(0,100,180,.04); color:transparent !important; border-radius:2px; animation:blink-bg 2s infinite; }
+
+  /* ── Params ──────────────────────────────────────────── */
+  .sim-params { display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--border); }
+  .param-cell { background:var(--surface); padding:14px 18px; }
+  .param-name { font-family:var(--mono); font-size:8px; letter-spacing:2px; color:var(--text-dim); text-transform:uppercase; margin-bottom:4px; }
+  .param-val { font-family:var(--mono); font-size:16px; font-weight:500; color:var(--text-bright); }
+  .param-note { font-size:10px; color:var(--text-dim); margin-top:2px; font-family:var(--sans); }
+
+  /* ── Patient Queue ── */
+  .queue-section { background: var(--surface); border: 1px solid var(--border); }
+  .queue-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); background: rgba(0,119,170,.03); }
+  .queue-title { font-family: var(--mono); font-size: 11px; letter-spacing: 2px; color: var(--text-bright); text-transform: uppercase; display: flex; align-items: center; gap: 10px; }
+  .queue-title-icon { font-size: 14px; }
+  .queue-meta { display: flex; align-items: center; gap: 20px; }
+  .queue-policy-selector { display: flex; align-items: center; gap: 8px; }
+  .queue-policy-label { font-family: var(--mono); font-size: 9px; letter-spacing: 1px; color: var(--text-dim); text-transform: uppercase; }
+  .queue-policy-select {
+    font-family: var(--mono); font-size: 10px; background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 4px 10px; cursor: pointer; letter-spacing: 1px; outline: none; appearance: none; padding-right: 22px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%237a9ab2'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 6px center;
+  }
+  .queue-count-badge { font-family: var(--mono); font-size: 9px; letter-spacing: 1px; padding: 3px 8px; background: rgba(0,119,170,.1); color: var(--accent); border: 1px solid rgba(0,119,170,.2); }
+  .queue-legend { display: flex; align-items: center; gap: 16px; padding: 8px 20px; border-bottom: 1px solid var(--border); background: var(--surface2); }
+  .queue-legend-item { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 8px; letter-spacing: 1px; color: var(--text-dim); text-transform: uppercase; }
+  .legend-swatch { width: 10px; height: 10px; border-radius: 2px; }
+  .queue-table-wrap { max-height: 420px; overflow-y: auto; }
+  .queue-table { width: 100%; border-collapse: collapse; }
+  .queue-table thead { position: sticky; top: 0; z-index: 10; background: var(--surface); }
+  .queue-table th { padding: 10px 14px; font-family: var(--mono); font-size: 8px; letter-spacing: 2px; color: var(--text-dim); text-transform: uppercase; text-align: left; border-bottom: 2px solid var(--border); font-weight: 400; }
+  .queue-table th.right { text-align: right; }
+  .queue-table td { padding: 10px 14px; border-bottom: 1px solid rgba(200,216,232,.5); font-family: var(--mono); font-size: 11px; color: var(--text); vertical-align: middle; }
+  .queue-table tr:hover td { background: rgba(0,119,170,.04); }
+  .queue-table tr.row-ctas1 td:first-child { border-left: 3px solid var(--ctas1); }
+  .queue-table tr.row-ctas2 td:first-child { border-left: 3px solid var(--ctas2); }
+  .queue-table tr.row-ctas3 td:first-child { border-left: 3px solid var(--ctas3); }
+  .q-rank { font-size: 13px; font-weight: 700; color: var(--text-dim); min-width: 30px; }
+  .q-rank.top3 { color: var(--accent); }
+  .q-pid { font-weight: 500; color: var(--text-bright); letter-spacing: 1px; }
+  .ctas-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 2px; font-size: 9px; letter-spacing: 1px; font-weight: 700; text-transform: uppercase; white-space: nowrap; }
+  .ctas-badge.ctas1 { background: rgba(204,17,17,.12); color: var(--ctas1); border: 1px solid rgba(204,17,17,.25); }
+  .ctas-badge.ctas2 { background: rgba(176,120,0,.12); color: var(--ctas2); border: 1px solid rgba(176,120,0,.25); }
+  .ctas-badge.ctas3 { background: rgba(26,138,0,.10); color: var(--ctas3); border: 1px solid rgba(26,138,0,.2); }
+  .q-wait { color: var(--text); }
+  .q-wait.over8  { color: var(--warn); font-weight: 600; }
+  .q-wait.over16 { color: var(--danger); font-weight: 700; }
+  .complaint-tag { display: inline-block; padding: 2px 7px; font-size: 9px; letter-spacing: .5px; background: var(--surface2); border: 1px solid var(--border); color: var(--text-dim); border-radius: 2px; }
+  .priority-score { display: flex; align-items: center; gap: 8px; }
+  .score-val { font-size: 12px; font-weight: 700; min-width: 30px; text-align: right; }
+  .score-bar { flex: 1; height: 4px; background: var(--surface2); border-radius: 2px; overflow: hidden; min-width: 60px; }
+  .score-bar-fill { height: 100%; border-radius: 2px; transition: width .6s ease; }
+  .score-high   { color: var(--danger); }
+  .score-high   .score-bar-fill { background: var(--danger); }
+  .score-mid    { color: var(--warn); }
+  .score-mid    .score-bar-fill { background: var(--warn); }
+  .score-low    { color: var(--accent3); }
+  .score-low    .score-bar-fill { background: var(--accent3); }
+  .queue-footer { padding: 10px 20px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--surface2); }
+  .queue-footer-note { font-family: var(--mono); font-size: 8px; letter-spacing: 1px; color: var(--text-dim); text-transform: uppercase; }
+  .queue-stat-pills { display: flex; gap: 12px; }
+  .q-pill { font-family: var(--mono); font-size: 8px; letter-spacing: 1px; padding: 2px 8px; border-radius: 2px; text-transform: uppercase; }
+  .q-pill.critical { background: rgba(204,17,17,.1); color: var(--ctas1); border: 1px solid rgba(204,17,17,.2); }
+  .q-pill.warn     { background: rgba(176,120,0,.1); color: var(--warn); border: 1px solid rgba(176,120,0,.2); }
+  .q-pill.ok       { background: rgba(26,138,0,.08); color: var(--ctas3); border: 1px solid rgba(26,138,0,.2); }
+  .queue-locked-msg { padding: 40px; text-align: center; font-family: var(--mono); font-size: 11px; letter-spacing: 2px; color: var(--text-dim); text-transform: uppercase; }
+
+  /* ── Footer ──────────────────────────────────────────── */
+  .footer { padding:16px 32px; border-top:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+  .footer-left { font-family:var(--mono); font-size:9px; color:var(--text-dim); letter-spacing:1px; }
+  .footer-right { font-family:var(--mono); font-size:9px; color:var(--text-dim); letter-spacing:1px; }
+
+  @keyframes slideUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+  .animate-in { animation:slideUp .4s ease forwards; }
+</style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="loading-title">ERgo Simulation Engine</div>
+  <div class="loading-percent" id="loadingPercent">0%</div>
+  <div class="loading-bar-wrap"><div class="loading-bar-fill" id="loadingBar"></div></div>
+  <div class="loading-log" id="loadingLog"></div>
+</div>
+
+<div class="header">
+  <div class="logo">
+    <span class="logo-main">ERgo</span>
+    <span class="logo-sub">Discrete-Event ER Simulation</span>
+  </div>
+  <div class="header-right">
+    <div class="sim-badge">
+      <div class="dot-pulse" id="statusDot"></div>
+      <span id="statusText">IDLE — SELECT POLICY &amp; RUN</span>
+    </div>
+  </div>
+</div>
+
+<div class="hospital-selector">
+  <span class="selector-label">Active Hospital</span>
+  <div class="hospital-tabs">
+    <button class="hospital-tab active" onclick="selectHospital('rvh',this)">Royal Victoria Hospital</button>
+    <button class="hospital-tab" onclick="selectHospital('mch',this)">Montréal Children's Hospital</button>
+    <button class="hospital-tab" onclick="selectHospital('ahs',this)">U of Alberta Hospital</button>
+  </div>
+  <div class="hospital-info" id="hospitalInfo"></div>
+</div>
+
+<div class="main">
+
+  <div>
+    <div class="section-label">System Parameters</div>
+    <div class="wide-panel">
+      <div class="sim-params" id="simParams"></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="section-label">Triage Policy Selection</div>
+    <div class="policy-row" id="policyRow"></div>
+  </div>
+
+  <div class="run-section">
+    <button class="run-btn" id="runBtn" onclick="runSimulation()">
+      <span class="run-btn-icon">▶</span>
+      <span>Execute Simulation (1200h window)</span>
+    </button>
+    <button class="run-btn" id="allBtn" onclick="runAllPolicies()" style="border-color:var(--accent2);color:var(--accent2);">
+      <span class="run-btn-icon">⊞</span>
+      <span>Run All Policies — Comparative</span>
+    </button>
+    <button class="reset-btn" onclick="resetDashboard()">↺ Reset</button>
+    <span class="run-hint" id="runHint">Select a policy and execute to load simulation data</span>
+  </div>
+
+  <div>
+    <div class="section-label">Live Metrics — <span id="activePolicyLabel" style="color:var(--accent)">No Policy Active</span></div>
+    <div class="stats-grid">
+      <div class="stat-card" id="card-avgwait">
+        <div class="stat-delta" id="delta-avgwait">—</div>
+        <div class="stat-label">Avg. Overall Wait</div>
+        <div class="stat-value redacted" id="val-avgwait">—</div>
+        <div class="stat-unit">hours · 1200h window</div>
+      </div>
+      <div class="stat-card" id="card-medwait">
+        <div class="stat-delta" id="delta-medwait">—</div>
+        <div class="stat-label">Median Wait</div>
+        <div class="stat-value redacted" id="val-medwait">—</div>
+        <div class="stat-unit">hours</div>
+      </div>
+      <div class="stat-card" id="card-severe">
+        <div class="stat-delta" id="delta-severe">—</div>
+        <div class="stat-label">Severe Patient Wait</div>
+        <div class="stat-value redacted" id="val-severe">—</div>
+        <div class="stat-unit">CTAS Level 1 · hrs</div>
+      </div>
+      <div class="stat-card" id="card-ext">
+        <div class="stat-delta" id="delta-ext">—</div>
+        <div class="stat-label">Extreme Waits (&gt;24h)</div>
+        <div class="stat-value redacted" id="val-ext">—</div>
+        <div class="stat-unit">events per 40h cycle</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="results-grid">
+    <div class="panel">
+      <div class="panel-title">🛏 Bed Occupancy — <span id="bedLabel" style="color:var(--text)">Awaiting Run</span></div>
+      <div id="bedGridContainer">
+         <div class="bed-grid" id="bedGrid"></div>
+      </div>
+      <div class="severity-row" style="margin-top:16px;">
+        <div class="sev-critical" id="sev-critical" style="width:0%"></div>
+        <div class="sev-standard" id="sev-standard" style="width:0%"></div>
+        <div class="sev-minor"    id="sev-minor"    style="width:100%"></div>
+      </div>
+      <div class="severity-legend">
+        <div class="sev-item"><div class="sev-dot" style="background:var(--danger)"></div>Critical (CTAS 1) <span id="sev-crit-pct" style="margin-left:4px;color:var(--text)">—</span></div>
+        <div class="sev-item"><div class="sev-dot" style="background:var(--warn)"></div>Standard (CTAS 2) <span id="sev-std-pct"  style="margin-left:4px;color:var(--text)">—</span></div>
+        <div class="sev-item"><div class="sev-dot" style="background:var(--accent3)"></div>Minor (CTAS 3) <span id="sev-min-pct"   style="margin-left:4px;color:var(--text)">—</span></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">📊 Patient Flow &amp; Throughput</div>
+      <div class="flow-grid" id="flowGrid">
+        <div class="flow-stat"><div class="flow-label">Arrivals / hr</div><div class="flow-val locked" id="fl-arrive">——</div><div class="flow-sub">λ empirical rate</div></div>
+        <div class="flow-stat"><div class="flow-label">Admitted</div><div class="flow-val locked" id="fl-admitted">——</div><div class="flow-sub">per 600h analysis</div></div>
+        <div class="flow-stat"><div class="flow-label">Discharged</div><div class="flow-val locked" id="fl-discharged">——</div><div class="flow-sub">completed treatment</div></div>
+        <div class="flow-stat"><div class="flow-label">Queue Peak</div><div class="flow-val locked" id="fl-qpeak">——</div><div class="flow-sub">max waiting</div></div>
+        <div class="flow-stat"><div class="flow-label">Bed Util.</div><div class="flow-val locked" id="fl-util">——</div><div class="flow-sub">avg occupancy</div></div>
+        <div class="flow-stat"><div class="flow-label">Misclassified</div><div class="flow-val locked" id="fl-misc">——</div><div class="flow-sub">10% triage error</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="section-label">Live Patient Queue — Clinical Decision Support</div>
+    <div class="queue-section">
+      <div class="queue-header">
+        <div class="queue-title">
+          <span class="queue-title-icon">🏥</span>
+          Next-to-See Queue
+          <span class="queue-count-badge" id="queueCountBadge">— patients waiting</span>
+        </div>
+        <div class="queue-meta">
+          <div class="queue-policy-selector">
+            <span class="queue-policy-label">Ordering policy:</span>
+            <select class="queue-policy-select" id="queuePolicySelect" onchange="renderQueue()"></select>
+          </div>
+        </div>
+      </div>
+
+      <div class="queue-legend">
+        <div class="queue-legend-item"><div class="legend-swatch" style="background:var(--ctas1)"></div> CTAS 1 — Severe / Life-threatening</div>
+        <div class="queue-legend-item"><div class="legend-swatch" style="background:var(--ctas2)"></div> CTAS 2 — Standard</div>
+        <div class="queue-legend-item"><div class="legend-swatch" style="background:var(--ctas3)"></div> CTAS 3 — Minor</div>
+        <div class="queue-legend-item" style="margin-left:auto"><span style="color:var(--danger);font-size:10px">●</span>&nbsp;Wait &gt;16h</div>
+        <div class="queue-legend-item"><span style="color:var(--warn);font-size:10px">●</span>&nbsp;Wait &gt;8h</div>
+      </div>
+
+      <div class="queue-table-wrap" id="queueTableWrap">
+        <div class="queue-locked-msg" id="queueLockedMsg">▶ Run simulation to populate queue</div>
+        <table class="queue-table" id="queueTable" style="display:none">
+          <thead>
+            <tr>
+              <th style="width:42px">#</th>
+              <th>Patient ID</th>
+              <th>CTAS Level</th>
+              <th>Waiting</th>
+              <th>Chief Complaint</th>
+              <th class="right">Priority Score</th>
+            </tr>
+          </thead>
+          <tbody id="queueBody"></tbody>
+        </table>
+      </div>
+
+      <div class="queue-footer">
+        <div class="queue-footer-note" id="queueFooterNote">Snapshot derived from simulation data · Demo mode</div>
+        <div class="queue-stat-pills" id="queueStatPills"></div>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="section-label">Comparative Analysis — All Policies</div>
+    <div class="wide-panel">
+      <div class="tab-row">
+        <button class="tab-btn active" onclick="switchTab('table',this)">Results Table</button>
+        <button class="tab-btn" onclick="switchTab('barchart',this)">Bar Charts</button>
+        <button class="tab-btn" onclick="switchTab('methodology',this)">Methodology</button>
+      </div>
+      <div style="padding:20px">
+
+        <div class="tab-content active" id="tab-table">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Policy</th>
+                <th>Avg Wait (hrs)</th>
+                <th>Median (hrs)</th>
+                <th>Severe Wait (hrs)</th>
+                <th>Ext. Waits (&gt;24h)</th>
+                <th>Max Wait (hrs)</th>
+                <th>Assessment</th>
+              </tr>
+            </thead>
+            <tbody id="resultsTableBody"></tbody>
+          </table>
+        </div>
+
+        <div class="tab-content" id="tab-barchart">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+            <div><div class="section-label" style="margin-bottom:8px">Average Overall Wait (hrs)</div><div class="bar-chart" id="bar-avg"></div></div>
+            <div><div class="section-label" style="margin-bottom:8px">Extreme Waits &gt;24h / cycle</div><div class="bar-chart" id="bar-ext"></div></div>
+            <div><div class="section-label" style="margin-bottom:8px">Median Wait (hrs)</div><div class="bar-chart" id="bar-med"></div></div>
+            <div><div class="section-label" style="margin-bottom:8px">Severe Patient Wait (hrs)</div><div class="bar-chart" id="bar-sev"></div></div>
+          </div>
+        </div>
+
+        <div class="tab-content" id="tab-methodology">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;font-size:12px;color:var(--text);line-height:1.7;">
+            <div>
+              <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--text-dim);text-transform:uppercase;margin-bottom:8px">Simulation Architecture</div>
+              <p>ERgo advances in discrete 1-hour steps. Each tick: wait counters increment, treatment durations count down, discharges are processed, and the waiting queue is re-sorted per active policy.</p>
+              <br>
+              <p>System utilization is calibrated using the Erlang-C model: <span style="font-family:var(--mono);color:var(--accent)">ρ = λ / (c × μ) ≈ 0.99</span>, reflecting near-saturation conditions observed in MSSS data.</p>
+              <br>
+              <p>A 600-hour burn-in precedes each 600-hour analysis window to allow organic queue formation under each policy, avoiding startup bias.</p>
+            </div>
+            <div>
+              <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--text-dim);text-transform:uppercase;margin-bottom:8px">Key Design Decisions</div>
+              <p><span style="color:var(--warn)">Misclassification Rate:</span> A 10% random triage error is injected per patient to reflect real-world triage uncertainty documented in Ding et al. (2018).</p>
+              <br>
+              <p><span style="color:var(--warn)">Congestion Penalty:</span> When all beds are occupied, a 10–20% treatment speed penalty is applied, modelling staff overload at capacity.</p>
+              <br>
+              <p><span style="color:var(--warn)">Data Sources:</span> Arrival rates (λ) are empirically derived from MSSS hourly ER status reports (RVH/MCH) and AHS operational data (UAH). The queue's priority score is computed per active policy each tick.</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  <div class="footer-left">ERgo v2.0 · Zhijian Sun &amp; Nu Kim Anh Ton · Canada-Wide Science Fair 2026 — Edmonton</div>
+  <div class="footer-right">Data: MSSS · AHS · CTAS Guidelines · Python / SimPy</div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════
+//  DATA
+// ════════════════════════════════════════════════════
+
+const HOSPITALS = {
+  rvh: {
+    name: 'Royal Victoria Hospital',
+    shortName: 'RVH',
+    beds: 33,
+    utilization: '≈ 99%',
+    utilNum: 99,
+    lambda: 3.2,
+    dataset: 'MSSS Hourly Dataset',
+    location: 'Montreal, QC',
+    critPct: 20, stdPct: 30, minPct: 50,
+    policies: ['fcfs','baseline','guillotine','fasttrack','wfcfs'],
+    results: {
+      fcfs:       { avg: 18.6, med: 16.0, sev: 18.0, ext: 37, max: 28 },
+      baseline:   { avg: 20.3, med: 20.0, sev: 11.4, ext: 73, max: 38 },
+      guillotine: { avg: 19.5, med: 19.0, sev: 11.4, ext: 71, max: 30 },
+      fasttrack:  { avg: 17.7, med: 15.0, sev: 11.4, ext: 58, max: 29 },
+      wfcfs:      { avg: 18.1, med: 15.5, sev: 11.4, ext: 45, max: 29 }
+    },
+    params: [
+      { name:'Active Beds',        val:'33',      note:'Strictly capped' },
+      { name:'Utilization ρ',      val:'≈ 99%',   note:'Erlang-C calibrated' },
+      { name:'Arrival Rate λ',     val:'3.2 / hr',note:'MSSS empirical' },
+      { name:'Burn-in Period',     val:'600 hrs', note:'15 × 40h cycles' },
+      { name:'Analysis Window',    val:'600 hrs', note:'Post burn-in' },
+      { name:'Triage Error',       val:'10%',     note:'Misclassification rate' },
+      { name:'Congestion Penalty', val:'10–20%',  note:'At full capacity' },
+      { name:'Patient Mix',        val:'20/30/50',note:'Sev/Std/Minor %' },
+      { name:'Sim Language',       val:'Python',  note:'OOP + SimPy' },
+    ]
+  },
+  mch: {
+    name: "Montréal Children's Hospital",
+    shortName: 'MCH',
+    beds: 24,
+    utilization: '≈ 97%',
+    utilNum: 97,
+    lambda: 2.5,
+    dataset: 'MSSS Pediatric Dataset',
+    location: 'Montreal, QC',
+    critPct: 15, stdPct: 35, minPct: 50,
+    policies: ['fcfs','baseline','guillotine','fasttrack','wfcfs'],
+    results: {
+      fcfs:       { avg: 16.2, med: 13.8, sev: 15.1, ext: 29, max: 23 },
+      baseline:   { avg: 18.4, med: 17.5, sev:  9.8, ext: 62, max: 37 },
+      guillotine: { avg: 17.8, med: 16.9, sev:  9.8, ext: 59, max: 30 },
+      fasttrack:  { avg: 15.3, med: 13.1, sev:  9.8, ext: 44, max: 25 },
+      wfcfs:      { avg: 15.9, med: 13.4, sev:  9.8, ext: 35, max: 26 }
+    },
+    params: [
+      { name:'Active Beds',        val:'24',      note:'Pediatric unit cap' },
+      { name:'Utilization ρ',      val:'≈ 97%',   note:'Erlang-C calibrated' },
+      { name:'Arrival Rate λ',     val:'2.5 / hr',note:'Pediatric adjusted' },
+      { name:'Burn-in Period',     val:'600 hrs', note:'15 × 40h cycles' },
+      { name:'Analysis Window',    val:'600 hrs', note:'Post burn-in' },
+      { name:'Triage Error',       val:'10%',     note:'Misclassification rate' },
+      { name:'Congestion Penalty', val:'10–20%',  note:'At full capacity' },
+      { name:'Patient Mix',        val:'15/35/50',note:'Sev/Std/Minor %' },
+      { name:'Sim Language',       val:'Python',  note:'OOP + SimPy' },
+    ]
+  },
+  ahs: {
+    name: 'University of Alberta Hospital',
+    shortName: 'UAH',
+    beds: 75,
+    sections: [
+      { name: 'Resus', count: 3 },
+      { name: 'Acute', count: 32 },
+      { name: 'General', count: 32 },
+      { name: 'Psych', count: 8 }
+    ],
+    utilization: '≈ 98%',
+    utilNum: 98,
+    lambda: 2.9,
+    dataset: 'AHS Operational Data',
+    location: 'Edmonton, AB',
+    critPct: 18, stdPct: 32, minPct: 50,
+    policies: ['fcfs','baseline','guillotine','fasttrack','wfcfs'],
+    results: {
+      fcfs:       { avg: 8.8, med: 8.0, sev: 11.4, ext: 0,  max: 23 },
+      baseline:   { avg: 8.8, med: 7.0, sev:  0.9, ext: 32, max: 37 },
+      guillotine: { avg: 8.8, med: 8.0, sev:  8.7, ext: 0,  max: 24 },
+      fasttrack:  { avg: 8.8, med: 7.0, sev:  0.9, ext: 5,  max: 25 },
+      wfcfs:      { avg: 8.8, med: 7.0, sev:  0.9, ext: 4,  max: 25 },
+    },
+    params: [
+      { name:'Active Beds',        val:'75',      note:'Resus 3 | Acute 32 | Gen 32 | Psych 8' },
+      { name:'Utilization ρ',      val:'≈ 98%',   note:'Erlang-C calibrated' },
+      { name:'Arrival Rate λ',     val:'2.9 / hr',note:'AHS empirical' },
+      { name:'Burn-in Period',     val:'600 hrs', note:'15 × 40h cycles' },
+      { name:'Analysis Window',    val:'600 hrs', note:'Post burn-in' },
+      { name:'Triage Error',       val:'10%',     note:'Misclassification rate' },
+      { name:'Congestion Penalty', val:'10–20%',  note:'At full capacity' },
+      { name:'Patient Mix',        val:'18/32/50',note:'Sev/Std/Minor %' },
+      { name:'Sim Language',       val:'Python',  note:'OOP + SimPy' },
+    ]
+  }
+};
+
+const POLICY_META = {
+  fcfs:       { label:'FCFS',          color:'var(--col-fcfs)',       cssClass:'fcfs',       desc:'First-Come, First-Served. Purely arrival-order based. No medical priority.' },
+  baseline:   { label:'Baseline',      color:'var(--col-baseline)',   cssClass:'baseline',   desc:'Standard Triage. Severity-first with arrival as tiebreaker. Current QC protocol.' },
+  guillotine: { label:'Guillotine',    color:'var(--col-guillotine)', cssClass:'guillotine', desc:'Baseline logic + automatic front-of-queue if waiting > 24 hrs.' },
+  fasttrack:  { label:'Fast-Track',    color:'var(--col-fasttrack)',  cssClass:'fasttrack',  desc:'Critical-first. Minor cases clear beds fast. Level 2 promoted after 8 hrs.' },
+  wfcfs:      { label:'Weighted FCFS', color:'var(--col-wfcfs)',      cssClass:'wfcfs',      desc:'FCFS weighted by severity score. Smooth blend of fairness and medical priority.' },
+};
+
+const BEST_POLICY = { rvh:'fasttrack', mch:'fasttrack', ahs:'fasttrack' };
+
+const COMPLAINT_LABELS = {
+  'CP': 'Chest Pain', 'SOB': 'Shortness of Breath', 'ABD': 'Abdominal Pain',
+  'LACS': 'Laceration', 'FX': 'Fracture', 'HA': 'Headache',
+  'FEVER': 'High Fever', 'ALT': 'Altered Mental Status', 'FALL': 'Fall / Trauma',
+  'DVT': 'Leg Swelling', 'RASH': 'Rash', 'BACK': 'Back Pain',
+  'N/V': 'Nausea / Vomiting', 'SYNC': 'Syncope', 'URI': 'Upper Resp. Infection',
+};
+
+const COMPLAINTS_BY_CTAS = {
+  1: ['CP', 'SOB', 'ALT', 'SYNC'],
+  2: ['ABD', 'FEVER', 'FALL', 'DVT', 'N/V'],
+  3: ['LACS', 'FX', 'HA', 'RASH', 'BACK', 'URI']
+};
+
+let demoPatients = [];
+
+function generateRandomPatients() {
+  demoPatients = [];
+  const ctasTargetMix = [
+    { level: 1, quota: 6 },  
+    { level: 2, quota: 11 }, 
+    { level: 3, quota: 15 }  
+  ];
+
+  ctasTargetMix.forEach(group => {
+    for (let i = 0; i < group.quota; i++) {
+      const pid = 'PT-' + String(Math.floor(1000 + Math.random() * 9000));
+      const codePool = COMPLAINTS_BY_CTAS[group.level];
+      const selectedComplaint = codePool[Math.floor(Math.random() * codePool.length)];
+      
+      // CRITICAL FIX: Expanded ceiling boundaries to guarantee patients breach the 24h guillotine threshold
+      let simulatedWait = 0;
+      if (group.level === 1) {
+        simulatedWait = parseFloat((0.1 + Math.random() * 4.0).toFixed(1));
+      } else if (group.level === 2) {
+        simulatedWait = parseFloat((2.0 + Math.random() * 12.0).toFixed(1));
+      } else {
+        simulatedWait = parseFloat((4.0 + Math.random() * 24.0).toFixed(1));
+      }
+
+      demoPatients.push([pid, group.level, simulatedWait, selectedComplaint, 0]);
+    }
+  });
+
+  for (let i = demoPatients.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [demoPatients[i], demoPatients[j]] = [demoPatients[j], demoPatients[i]];
+  }
+
+  demoPatients.forEach((patient, idx) => {
+    patient[4] = idx + 1;
+  });
+}
+
+// CRITICAL FIX: Back-end scoring algorithm completely restructured to enforce strict sorting boundaries
+function computePriority(policy, ctas, waitHrs, arrivalOrder) {
+  const sevScore = (4 - ctas) / 3; 
+  const arrivalScore = 10000 - arrivalOrder; 
+
+  switch (policy) {
+    case 'fcfs':
+      return arrivalScore; // Enforces absolute arrival order without triage bias
+
+    case 'baseline':
+      return (sevScore * 100000) + arrivalScore; // Triage level primary, arrival secondary
+
+    case 'guillotine':
+      if (waitHrs >= 24) {
+        return 1000000 + waitHrs + arrivalScore; // Triggers override front-of-line status
+      }
+      return (sevScore * 100000) + arrivalScore;
+
+    case 'fasttrack':
+      if (ctas === 1) return 500000 + arrivalScore;
+      if (ctas === 2 && waitHrs >= 8) return 400000 + (waitHrs * 100) + arrivalScore; // Dynamic escalation
+      if (ctas === 3) return 300000 + arrivalScore; // Direct tracking lane routing
+      return 100000 + arrivalScore;
+
+    case 'wfcfs':
+      const weightMultiplier = { 1: 3.5, 2: 1.8, 3: 0.6 }[ctas];
+      return (waitHrs * weightMultiplier * 100) + (100 - arrivalOrder);
+
+    default:
+      return arrivalScore;
+  }
+}
+
+// ════════════════════════════════════════════════════
+//  STATE & INITIALIZATION
+// ════════════════════════════════════════════════════
+let currentHospital = 'rvh';
+let currentPolicy   = 'fcfs';
+let hasRun  = false;
+let allRan  = false;
+let queueUnlocked = false;
+
+function init() {
+  generateRandomPatients(); 
+  renderHospitalInfo();
+  renderParams();
+  renderPolicyCards();
+  renderBeds(false);
+  renderTableLocked();
+  renderBarsLocked();
+  renderQueueSelector();
+  renderQueue();
+}
+
+function renderHospitalInfo() {
+  const h = HOSPITALS[currentHospital];
+  document.getElementById('hospitalInfo').innerHTML =
+    `<span>${h.beds}</span> beds &middot; <span>${h.utilization}</span> utilization &middot; ${h.dataset} &middot; ${h.location}`;
+}
+
+function renderParams() {
+  const h = HOSPITALS[currentHospital];
+  document.getElementById('simParams').innerHTML = h.params.map(p => `
+    <div class="param-cell">
+      <div class="param-name">${p.name}</div>
+      <div class="param-val">${p.val}</div>
+      <div class="param-note">${p.note}</div>
+    </div>`).join('');
+}
+
+function renderPolicyCards() {
+  const h = HOSPITALS[currentHospital];
+  document.getElementById('policyRow').innerHTML = h.policies.map(p => {
+    const m = POLICY_META[p];
+    const sel = p === currentPolicy ? ' selected' : '';
+    return `
+      <div class="policy-card${sel}" onclick="selectPolicy('${p}',this)">
+        <div class="policy-name">
+          <span class="policy-dot" style="background:${m.color}"></span>${m.label}
+        </div>
+        <div class="policy-desc">${m.desc}</div>
+      </div>`;
+  }).join('');
+  if (!h.policies.includes(currentPolicy)) {
+    currentPolicy = h.policies[0];
+    renderPolicyCards();
+  }
+}
+
+function renderQueueSelector() {
+  const h = HOSPITALS[currentHospital];
+  const sel = document.getElementById('queuePolicySelect');
+  sel.innerHTML = h.policies.map(p =>
+    `<option value="${p}"${p === currentPolicy ? ' selected' : ''}>${POLICY_META[p].label}</option>`
+  ).join('');
+}
+
+// ════════════════════════════════════════════════════
+//  QUEUE RENDERING
+// ════════════════════════════════════════════════════
+function renderQueue() {
+  const policy = document.getElementById('queuePolicySelect').value;
+  if (!queueUnlocked) {
+    document.getElementById('queueLockedMsg').style.display = 'block';
+    document.getElementById('queueTable').style.display = 'none';
+    document.getElementById('queueCountBadge').textContent = '— patients waiting';
+    document.getElementById('queueStatPills').innerHTML = '';
+    return;
+  }
+
+  document.getElementById('queueLockedMsg').style.display = 'none';
+  document.getElementById('queueTable').style.display = 'table';
+
+  const scored = demoPatients.map(([id, ctas, wait, complaint, order]) => ({
+    id, ctas, wait, complaint, order,
+    score: computePriority(policy, ctas, wait, order),
+  }));
+  scored.sort((a, b) => b.score - a.score);
+
+  const tbody = document.getElementById('queueBody');
+  tbody.innerHTML = scored.map((p, i) => {
+    const rank = i + 1;
+    
+    // CRITICAL FIX: Frontend display scores anchored directly to policy context structures to prevent range compression distortion
+    let displayScore = 0;
+    if (policy === 'fcfs') {
+      displayScore = Math.round((1 - (p.order / demoPatients.length)) * 99) + 1;
+    } else if (policy === 'wfcfs') {
+      displayScore = Math.round(Math.min((p.wait * (4 - p.ctas) * 3), 100));
+    } else {
+      if (policy === 'guillotine' && p.wait >= 24) displayScore = 100;
+      else if (p.ctas === 1) displayScore = 95 - p.order;
+      else if (p.ctas === 2) displayScore = (policy === 'fasttrack' && p.wait >= 8) ? 85 : 55 - p.order;
+      else displayScore = (policy === 'fasttrack') ? 75 : 25 - p.order;
+    }
+    
+    displayScore = Math.max(1, Math.min(displayScore, 100));
+    let waitClass = p.wait > 16 ? 'over16' : (p.wait > 8 ? 'over8' : '');
+    let scoreClass = displayScore >= 75 ? 'score-high' : (displayScore >= 40 ? 'score-mid' : 'score-low');
+
+    return `<tr class="row-ctas${p.ctas}">
+      <td class="q-rank${rank <= 3 ? ' top3' : ''}">${rank}</td>
+      <td class="q-pid">${p.id}</td>
+      <td><span class="ctas-badge ctas${p.ctas}">CTAS ${p.ctas} — ${p.ctas===1?'Severe':p.ctas===2?'Standard':'Minor'}</span></td>
+      <td class="q-wait ${waitClass}">${p.wait.toFixed(1)} h</td>
+      <td><span class="complaint-tag">${COMPLAINT_LABELS[p.complaint]}</span></td>
+      <td style="min-width:130px">
+        <div class="priority-score ${scoreClass}">
+          <span class="score-val">${displayScore}</span>
+          <div class="score-bar"><div class="score-bar-fill" style="width:${displayScore}%"></div></div>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('queueCountBadge').textContent = `${scored.length} patients waiting`;
+  document.getElementById('queueFooterNote').textContent = `Ordering: ${POLICY_META[policy].label} · Snapshot derived from simulation data · Demo mode`;
+
+  document.getElementById('queueStatPills').innerHTML = `
+    <span class="q-pill critical">${scored.filter(p => p.ctas === 1).length} Critical</span>
+    <span class="q-pill warn">${scored.filter(p => p.ctas === 2).length} Standard</span>
+    <span class="q-pill ok">${scored.filter(p => p.ctas === 3).length} Minor</span>
+  `;
+}
+
+// ════════════════════════════════════════════════════
+//  BEDS RENDERING (WITH SECTION SUPPORT)
+// ════════════════════════════════════════════════════
+function renderBeds(populated, policy) {
+  const h = HOSPITALS[currentHospital];
+  const container = document.getElementById('bedGridContainer');
+
+  if (!populated) {
+    if (h.sections) {
+      container.innerHTML = `<div class="sectioned-beds-container">` + h.sections.map(sec => `
+        <div class="bed-section-block">
+          <div class="bed-section-header"><span>${sec.name} Section</span> <span>0 / ${sec.count}</span></div>
+          <div class="bed-grid" style="grid-template-columns: repeat(${Math.ceil(Math.sqrt(sec.count * 1.3))}, 1fr)">
+            ${Array(sec.count).fill(0).map(() => `<div class="bed-cell locked"></div>`).join('')}
+          </div>
+        </div>`).join('') + `</div>`;
+    } else {
+      const cols = Math.ceil(Math.sqrt(h.beds * 1.3));
+      container.innerHTML = `<div class="bed-grid" id="bedGrid" style="grid-template-columns: repeat(${cols}, 1fr)">
+        ${Array(h.beds).fill(0).map(() => `<div class="bed-cell locked"></div>`).join('')}
+      </div>`;
+    }
+    document.getElementById('bedLabel').textContent = 'Awaiting Run';
+    return;
+  }
+
+  const occupiedCount  = Math.round(h.beds * 0.97);
+  const criticalCount  = Math.round(h.beds * (h.critPct / 100));
+  let statePool = [];
+  for (let i = 0; i < h.beds; i++) {
+    if (i < criticalCount) statePool.push('critical');
+    else if (i < occupiedCount) statePool.push('occupied');
+    else statePool.push('');
+  }
+  for (let i = statePool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [statePool[i], statePool[j]] = [statePool[j], statePool[i]];
+  }
+
+  if (h.sections) {
+    let poolIndex = 0;
+    let totalActiveOccupied = 0;
+    container.innerHTML = `<div class="sectioned-beds-container">` + h.sections.map(sec => {
+      let sectionCells = [];
+      let sectionOccupied = 0;
+      for (let c = 0; c < sec.count; c++) {
+        let state = statePool[poolIndex++];
+        sectionCells.push(state);
+        if (state === 'critical' || state === 'occupied') sectionOccupied++;
+      }
+      totalActiveOccupied += sectionOccupied;
+      return `
+        <div class="bed-section-block">
+          <div class="bed-section-header"><span>${sec.name} Section</span> <span>${sectionOccupied} / ${sec.count} Occupied</span></div>
+          <div class="bed-grid" style="grid-template-columns: repeat(${Math.ceil(Math.sqrt(sec.count * 1.3))}, 1fr)">
+            ${sectionCells.map(c => `<div class="bed-cell ${c}"></div>`).join('')}
+          </div>
+        </div>`;
+    }).join('') + `</div>`;
+    document.getElementById('bedLabel').textContent = `${totalActiveOccupied}/${h.beds} Occupied`;
+  } else {
+    const cols = Math.ceil(Math.sqrt(h.beds * 1.3));
+    container.innerHTML = `<div class="bed-grid" id="bedGrid" style="grid-template-columns: repeat(${cols}, 1fr)">
+      ${statePool.map(c => `<div class="bed-cell ${c}"></div>`).join('')}
+    </div>`;
+    document.getElementById('bedLabel').textContent = `${occupiedCount}/${h.beds} Occupied`;
+  }
+}
+
+// ════════════════════════════════════════════════════
+//  SIMULATION REVEAL
+// ════════════════════════════════════════════════════
+function revealSinglePolicy(policy) {
+  const h = HOSPITALS[currentHospital];
+  const r = h.results[policy];
+  hasRun = true;
+
+  document.getElementById('activePolicyLabel').textContent = POLICY_META[policy].label;
+  document.getElementById('statusText').textContent = `SIMULATION COMPLETE — ${POLICY_META[policy].label.toUpperCase()}`;
+  document.getElementById('runHint').textContent = `Results loaded for ${POLICY_META[policy].label} on ${h.name}`;
+
+  animateValue('val-avgwait', r.avg, 1);
+  animateValue('val-medwait', r.med, 1);
+  animateValue('val-severe',  r.sev, 1);
+  animateValue('val-ext',     r.ext, 0);
+
+  setCardColor('card-avgwait', r.avg < 14 ? 'ok' : r.avg < 18 ? 'warn' : 'danger');
+  setCardColor('card-medwait', r.med < 12 ? 'ok' : r.med < 16 ? 'warn' : 'danger');
+  setCardColor('card-severe',  r.sev < 5  ? 'ok' : r.sev < 12 ? 'warn' : 'danger');
+  setCardColor('card-ext',     r.ext === 0 ? 'ok' : r.ext < 20 ? 'warn' : 'danger');
+
+  setDelta('delta-avgwait', r.avg, h.results.baseline.avg, 'hrs');
+  setDelta('delta-medwait', r.med, h.results.baseline.med, 'hrs');
+  setDelta('delta-severe',  r.sev, h.results.baseline.sev, 'hrs');
+  setDelta('delta-ext',     r.ext, h.results.baseline.ext, '');
+
+  renderBeds(true, policy);
+
+  const admitted    = Math.round(h.lambda * 600 * 0.97);
+  const discharged  = Math.round(admitted * 0.92);
+  const misc        = Math.round(admitted * 0.10);
+  revealFlowStats(h.lambda.toFixed(1), admitted, discharged, Math.round(h.beds * 1.8), '≈' + h.utilNum + '%', misc);
+
+  document.getElementById('sev-critical').style.width = h.critPct + '%';
+  document.getElementById('sev-standard').style.width = h.stdPct  + '%';
+  document.getElementById('sev-minor').style.width    = h.minPct  + '%';
+  document.getElementById('sev-crit-pct').textContent = h.critPct + '%';
+  document.getElementById('sev-std-pct').textContent  = h.stdPct  + '%';
+  document.getElementById('sev-min-pct').textContent  = h.minPct  + '%';
+
+  queueUnlocked = true;
+  document.getElementById('queuePolicySelect').value = policy;
+  renderQueue();
+}
+
+function revealAllPolicies() {
+  allRan = true;
+  hasRun = true;
+  revealSinglePolicy(BEST_POLICY[currentHospital]);
+  renderTablePopulated();
+  renderBarsPopulated();
+  document.getElementById('statusText').textContent = 'COMPARATIVE ANALYSIS COMPLETE';
+  document.getElementById('runHint').textContent = 'All policies simulated on ' + HOSPITALS[currentHospital].name;
+}
+
+// ════════════════════════════════════════════════════
+//  TABLE & BARS
+// ════════════════════════════════════════════════════
+function renderTableLocked() {
+  const h = HOSPITALS[currentHospital];
+  document.getElementById('resultsTableBody').innerHTML = h.policies.map(p => `
+    <tr>
+      <td>${POLICY_META[p].label}</td>
+      <td class="locked-cell">——</td>
+      <td class="locked-cell">——</td>
+      <td class="locked-cell">——</td>
+      <td class="locked-cell">——</td>
+      <td class="locked-cell">——</td>
+      <td class="locked-cell">——</td>
+    </tr>`).join('');
+}
+
+function renderTablePopulated() {
+  const h = HOSPITALS[currentHospital];
+  const best = BEST_POLICY[currentHospital];
+  const assessments = {
+    fcfs:       'No medical triage; best extreme-wait control',
+    baseline:   'Current QC/AB standard; strong severe priority',
+    guillotine: 'Baseline + 24h safety override',
+    fasttrack:  'Best overall · lowest avg + severe priority',
+    wfcfs:      'Smooth severity-weighted fairness',
+  };
+
+  document.getElementById('resultsTableBody').innerHTML = h.policies.map(p => {
+    const r = h.results[p];
+    return `
+      <tr class="${p === best ? 'best-row' : ''}">
+        <td>${POLICY_META[p].label}${p === best ? '<span class="badge best">BEST</span>' : ''}${p === 'baseline' ? '<span class="badge warn">REF</span>' : ''}</td>
+        <td>${r.avg.toFixed(1)}</td>
+        <td>${r.med.toFixed(1)}</td>
+        <td>${r.sev.toFixed(1)}</td>
+        <td>${r.ext}</td>
+        <td>${r.max}</td>
+        <td style="color:${p === best ? 'var(--accent3)' : 'var(--text-dim)'};font-size:9px">${assessments[p]}</td>
+      </tr>`;
+  }).join('');
+}
+
+// ════════════════════════════════════════════════════
+//  CONTROLS & SIMULATION INTERNALS
+// ════════════════════════════════════════════════════
+function renderBarsLocked() {
+  const h = HOSPITALS[currentHospital];
+  ['bar-avg','bar-ext','bar-med','bar-sev'].forEach(id => {
+    document.getElementById(id).innerHTML = h.policies.map(p => `
+      <div class="bar-row">
+        <div class="bar-label">${POLICY_META[p].label}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:0%"></div></div>
+        <div class="bar-val locked">—</div>
+      </div>`).join('');
+  });
+}
+
+function renderBarsPopulated() {
+  const h = HOSPITALS[currentHospital];
+  const policies = h.policies;
+
+  function drawBar(containerId, getter) {
+    const vals = policies.map(getter);
+    const max  = Math.max(...vals);
+    const min  = Math.min(...vals);
+    document.getElementById(containerId).innerHTML = policies.map(p => {
+      const v = getter(p);
+      return `
+        <div class="bar-row">
+          <div class="bar-label">${POLICY_META[p].label}</div>
+          <div class="bar-track"><div class="bar-fill ${POLICY_META[p].cssClass}${v === min ? ' best' : ''}" data-width="${max > 0 ? (v / max) * 100 : 0}"></div></div>
+          <div class="bar-val">${typeof v === 'number' && v % 1 !== 0 ? v.toFixed(1) : v}</div>
+        </div>`;
+    }).join('');
+  }
+
+  drawBar('bar-avg', p => h.results[p].avg);
+  drawBar('bar-ext', p => h.results[p].ext);
+  drawBar('bar-med', p => h.results[p].med);
+  drawBar('bar-sev', p => h.results[p].sev);
+
+  setTimeout(() => {
+    document.querySelectorAll('.bar-fill[data-width]').forEach(el => {
+      el.style.width = el.getAttribute('data-width') + '%';
+    });
+  }, 100);
+}
+
+function revealFlowStats(arrive, admitted, discharged, qpeak, util, misc) {
+  const fields = { 'fl-arrive':arrive, 'fl-admitted':admitted, 'fl-discharged':discharged, 'fl-qpeak':qpeak, 'fl-util':util, 'fl-misc':misc };
+  let delay = 0;
+  for (const [id, val] of Object.entries(fields)) {
+    setTimeout(() => {
+      const el = document.getElementById(id);
+      el.classList.remove('locked');
+      el.textContent = val;
+    }, delay);
+    delay += 120;
+  }
+}
+
+function animateValue(id, target, decimals) {
+  const el = document.getElementById(id);
+  el.classList.remove('redacted');
+  el.style.color = 'var(--text-bright)';
+  const duration = 800, startTime = performance.now();
+  function update(now) {
+    const progress = Math.min((now - startTime) / duration, 1);
+    const val = target * (1 - Math.pow(1 - progress, 3));
+    el.textContent = decimals > 0 ? val.toFixed(decimals) : Math.round(val);
+    if (progress < 1) requestAnimationFrame(update);
+  }
+  requestAnimationFrame(update);
+}
+
+function setCardColor(cardId, type) { document.getElementById(cardId).className = 'stat-card ' + type; }
+
+function setDelta(id, val, ref, unit) {
+  const el = document.getElementById(id);
+  const diff = val - ref;
+  if (Math.abs(diff) < 0.05) { el.textContent = '—'; el.style.color = 'var(--text-dim)'; return; }
+  el.textContent = (diff < 0 ? '▼ ' : '▲ ') + (diff > 0 ? '+' : '') + (unit ? diff.toFixed(1) : Math.round(diff)) + (unit ? ' ' + unit + ' vs Baseline' : ' vs Baseline');
+  el.style.color = diff < 0 ? 'var(--accent3)' : 'var(--danger)';
+  el.style.fontSize = '8px';
+}
+
+const LOG_SINGLE = [
+  '> Initializing ERgo engine...', '> Loading arrival dataset...', '> Calibrating λ via Erlang-C model...',
+  '> Starting 600h burn-in period...', '> Burn-in: building organic queue state...', '> Applying 10% misclassification noise...',
+  '> Burn-in complete. Resetting counters...', '> Running 600h analysis window...', '> Applying congestion penalty at capacity...',
+  '> Collecting discharge & wait statistics...', '> Computing policy metrics...', '> Finalizing output...',
+];
+
+const LOG_ALL = [
+  '> Initializing ERgo engine (×5 instances)...', '> Loading arrival dataset...', '> Calibrating λ via Erlang-C model...',
+  '> Starting parallel burn-in (5 × 600h)...', '> Policy FCFS: burn-in complete...', '> Policy Baseline: burn-in complete...',
+  '> Policy Guillotine: burn-in complete...', '> Policy Fast-Track: burn-in complete...', '> Policy Weighted FCFS: burn-in complete...',
+  '> Running comparative 600h analysis windows...', '> Injecting 10% triage error across all queues...', '> Applying congestion slowdown at bed capacity...',
+  '> Collecting multi-policy discharge logs...', '> Cross-comparing wait distribution metrics...', '> Building comparative performance table...', '> Analysis complete.',
+];
+
+function runAnimation(logs, onDone) {
+  const overlay = document.getElementById('loadingOverlay');
+  overlay.classList.add('visible');
+  const logDiv = document.getElementById('loadingLog'), barFill = document.getElementById('loadingBar'), pctEl = document.getElementById('loadingPercent');
+  logDiv.innerHTML = '';
+  let step = 0;
+  function next() {
+    if (step >= logs.length) { setTimeout(() => { overlay.classList.remove('visible'); onDone(); }, 400); return; }
+    const pct = Math.round(((step+1) / logs.length) * 100);
+    barFill.style.width = pct + '%'; pctEl.textContent = pct + '%';
+    const line = document.createElement('div');
+    line.className = 'log-line active'; line.textContent = logs[step];
+    logDiv.appendChild(line); logDiv.scrollTop = logDiv.scrollHeight;
+    if (step > 0) logDiv.children[step-1].className = 'log-line done';
+    step++;
+    setTimeout(next, step <= 2 ? 300 : (step <= 5 ? 280 : 200));
+  }
+  next();
+}
+
+function runSimulation() { runAnimation(LOG_SINGLE, () => revealSinglePolicy(currentPolicy)); }
+function runAllPolicies() { runAnimation(LOG_ALL, revealAllPolicies); }
+
+function selectPolicy(policy, el) {
+  currentPolicy = policy;
+  document.querySelectorAll('.policy-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+// FIXED: Integrated clean initialization updates on reset and switch routines
+function selectHospital(hosp, el) {
+  currentHospital = hosp;
+  document.querySelectorAll('.hospital-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  resetDashboard();
+}
+
+function resetDashboard() {
+  hasRun = false; allRan = false; queueUnlocked = false;
+  generateRandomPatients(); 
+  document.getElementById('activePolicyLabel').textContent = 'No Policy Active';
+  document.getElementById('statusText').textContent = 'IDLE — SELECT POLICY & RUN';
+  document.getElementById('runHint').textContent = 'Select a policy and execute to load simulation data';
+
+  ['val-avgwait','val-medwait','val-severe','val-ext'].forEach(id => {
+    let el = document.getElementById(id); el.classList.add('redacted'); el.textContent = '—'; el.style.color = '';
+  });
+  ['card-avgwait','card-medwait','card-severe','card-ext'].forEach(id => { document.getElementById(id).className = 'stat-card'; });
+  ['delta-avgwait','delta-medwait','delta-severe','delta-ext'].forEach(id => {
+    let el = document.getElementById(id); el.textContent = '—'; el.style.color = 'var(--text-dim)'; el.style.fontSize = '';
+  });
+  ['fl-arrive','fl-admitted','fl-discharged','fl-qpeak','fl-util','fl-misc'].forEach(id => {
+    let el = document.getElementById(id); el.classList.add('locked'); el.textContent = '——';
+  });
+
+  document.getElementById('sev-critical').style.width = '0%';
+  document.getElementById('sev-standard').style.width = '0%';
+  document.getElementById('sev-minor').style.width    = '100%';
+  document.getElementById('sev-crit-pct').textContent = '—';
+  document.getElementById('sev-std-pct').textContent  = '—';
+  document.getElementById('sev-min-pct').textContent  = '—';
+
+  const h = HOSPITALS[currentHospital];
+  if (!h.policies.includes(currentPolicy)) currentPolicy = h.policies[0];
+
+  renderHospitalInfo();
+  renderParams();
+  renderPolicyCards();
+  renderBeds(false);
+  renderTableLocked();
+  renderBarsLocked();
+  renderQueueSelector();
+  renderQueue();
+}
+
+function switchTab(tab, el) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('tab-' + tab).classList.add('active');
+  if (tab === 'barchart' && allRan) {
+    setTimeout(() => {
+      document.querySelectorAll('.bar-fill[data-width]').forEach(el => {
+        el.style.width = el.getAttribute('data-width') + '%';
+      });
+    }, 100);
+  }
+}
+
+init();
+</script>
+</body>
+</html>

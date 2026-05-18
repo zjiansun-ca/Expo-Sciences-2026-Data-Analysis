@@ -72,14 +72,14 @@ class EREngineV3:
             
         elif self.policy_mode == "GUILLOTINE":
             self.queue.sort(key=lambda p: (
-                0 if p.wait_time > 24 else p.perceived_severity, 
+                0 if p.wait_time > 10 else p.perceived_severity, 
                 -p.wait_time
             ))
             
         elif self.policy_mode == "FAST_TRACK":
             def fast_track_priority(p):
                 if p.perceived_severity == 1: return 1
-                elif p.perceived_severity == 2 and p.wait_time > 24: return 1.5 
+                elif p.perceived_severity == 2 and p.wait_time > 10: return 1.5 
                 elif p.perceived_severity == 3: return 2
                 else: return 3 
                 
@@ -282,5 +282,5 @@ def run_v3_experiment(arrival_data):
     print("Check your folder for Graph1 through Graph6.")
 
 # USAGE
-real_arrivals_list = [2, 2, 2, 3, 5, 0, 5, 0, 1, 4, 3, 3, 1, 0, 0, 4, 0, 0, 1, 3, 4, 2, 7, 0, 4, 6, 3, 5, 2, 2, 2, 3, 0, 0, 2, 3, 5, 2, 6, 3]
+real_arrivals_list = [0, 5, 6, 11, 8, 4, 6, 0, 21, 12, 10, 12, 4, 6, 5, 7, 0, 6, 7, 8, 7, 5, 6, 0, 11, 8, 9, 6, 15, 5, 4, 4, 0, 3, 0, 5, 12, 5, 8, 6]
 run_v3_experiment(real_arrivals_list)
